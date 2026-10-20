@@ -7850,7 +7850,8 @@
                     </label>
 
                     <div class="personality-chips" id="naiPromptChips">
-                        <button type="button" class="personality-chip active" data-ver="v5" onclick="switchNaiPromptTab('v5', this)">NAI V5 Full</button>
+                        <button type="button" class="personality-chip active" data-ver="v5_zh" onclick="switchNaiPromptTab('v5_zh', this)">V5 中文分段</button>
+                        <button type="button" class="personality-chip" data-ver="v5_en" onclick="switchNaiPromptTab('v5_en', this)">V5 英文分段</button>
                         <button type="button" class="personality-chip" data-ver="v45" onclick="switchNaiPromptTab('v45', this)">NAI V4.5</button>
                     </div>
 
@@ -7973,9 +7974,13 @@
                         <label class="setting-label" style="margin-bottom: 0;">提示词 (Tags)</label>
                         <div style="display: flex; gap: 6px; align-items: center;">
                             <select id="naiVersionSelect" onchange="saveNaiState()" style="padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(0, 122, 255, 0.25); background: rgba(0, 122, 255, 0.06); color: var(--primary-color); font-size: 12px; font-weight: 600; outline: none; cursor: pointer;">
-                                <option value="v45">V4.5 规则</option>
-                                <option value="v5">V5 Full 规则</option>
+                                <option value="v5_zh">V5 Full (中文分段)</option>
+                                <option value="v5_en">V5 Full (英文分段)</option>
+                                <option value="v45">V4.5 (纯英文Tag)</option>
                             </select>
+                            <button type="button" class="nai-mini-btn" id="naiDirectGoogleBtn" onclick="googleTranslateNaiPrompt('prompt')" title="免费使用谷歌翻译将下方输入框内的中文直接译为英文自然语言">
+                                谷歌直译
+                            </button>
                             <button type="button" class="nai-mini-btn" onclick="toggleNaiConvertBox()">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 8 6 6"></path><path d="m4 14 6-6 2-3"></path><path d="M2 5h12"></path><path d="M7 2h1"></path><path d="m22 22-5-10-5 10"></path><path d="M14 18h6"></path></svg>
                                 中文转提示词
@@ -7986,9 +7991,10 @@
                     <div class="nai-convert-box" id="naiConvertBox">
                         <div id="naiConvertBoxHint" style="font-size: 12px; font-weight: 600; color: var(--primary-color); margin-bottom: 6px;">输入中文画面描述（将按当前所选 V4.5 / V5 Full 专属规则转换）</div>
                         <textarea class="textarea" id="naiCnInput" style="min-height: 70px; font-size: 13px; margin-bottom: 8px; padding: 8px 10px;" placeholder="例如：雨夜的霓虹街道上，一位银发蓝眼少女撑着透明雨伞，看向观众，电影感构图..."></textarea>
-                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
                             <button type="button" class="nai-mini-btn" style="background: transparent;" onclick="toggleNaiConvertBox(false)">收起</button>
-                            <button type="button" class="nai-mini-btn" id="naiConvertSubmitBtn" onclick="convertChineseToNaiPrompt()">立即转换并填入</button>
+                            <button type="button" class="nai-mini-btn" id="naiGoogleTranslateBtn" onclick="googleTranslateNaiPrompt('cnBox')">谷歌免费直译填入</button>
+                            <button type="button" class="nai-mini-btn" id="naiConvertSubmitBtn" onclick="convertChineseToNaiPrompt()">AI按规则转换并填入</button>
                         </div>
                     </div>
                     <textarea class="textarea" id="naiPromptInput" oninput="saveNaiState()" style="min-height: 96px; font-family: ui-monospace, monospace; font-size: 13px; padding: 10px;" placeholder="1girl, solo, silver hair, blue eyes, masterpiece, best quality..."></textarea>
@@ -8742,8 +8748,73 @@ WEIGHTING
 - Keep logically related tags adjacent and allocate more tags to the visual focal point than to minor background details.
 For multiple characters, keep each character's appearance and actions unambiguous and adjacent.`;
 
-        // NovelAI V5 Full 专用提示词转换指令（待特训注入专属规则）
-        let NAI_V5_PROMPT_SYSTEM_MESSAGE = NAI_V45_PROMPT_SYSTEM_MESSAGE;
+        // NovelAI V5 Full 专用提示词转换指令 —— 中文分段版（基于官方 Gallery 8/12 原图元数据与实测验证）
+        const NAI_V5_ZH_PROMPT_SYSTEM_MESSAGE = `You are a specialist at crafting precise NovelAI Diffusion V5 Full prompts in structured Chinese + Booru hybrid format, strictly grounded in official NovelAI V5 documentation and repeatedly verified empirical rules.
+
+VERIFIED V5 FULL GENERATION RULES (CHINESE HYBRID MODE)
+1. Quality Header & Weight Spacing Iron Law:
+   - Begin Paragraph 1 with core quality, rating, subject count, character tags, and layout archetype tags (e.g., \`masterpiece, best quality, very aesthetic, absurdres\`). Do NOT force any specific artist or medium preset unless the user requests one (the user selects artist/style presets separately).
+   - WEIGHT SPACING IRON LAW: Whenever a weighted term ends with a number (e.g., \`2::year 2026 ::,\`, \`2::artist:mi 398 ::,\`), ALWAYS keep a space before the closing \`::\`. Writing \`2026::\` without a space makes NAI parse 2026 as a 2026x weight multiplier and causes pure-noise overexposure.
+
+2. Blank-Line Multi-Paragraph Structure & Verified Layout Archetypes:
+   - Separate the prompt into clear paragraphs with blank lines: [Paragraph 1: Quality, Rating, Character & Global Layout Tags] -> [Paragraphs 2+: Colon-Guided Spatial/Panel Descriptions & Trailing teXt:].
+   - Choose exact verified layout tags in Paragraph 1 based on the scene type:
+     * Game UI + Body Cut-ins: \`multiple views, reference sheet, game cg, jrpg style, user interface, hud, status screen, split screen\` (use \`zoom layer\` and specific anatomical sub-tags like \`areola\`, \`labia\` in the cut-in panels).
+     * Vertical 3-Tier Progression Split: \`simple white background, 3koma, three vertically stacked equal horizontal panels, split screen, horizontal dividing borders, expression progression, size progression\`.
+     * Multi-Panel Color Manga: \`simple white background, four panel manga, 1.5::high complexity ::, 2::detailed ::, 1.1::full color ::, dynamic panel layout, diagonal panel borders\`.
+     * AV / Promotional DVD Cover (Horizontal): \`multiple views, reference sheet, magazine cover, dvd cover, promotional poster, split screen, white panel borders, graphic design\` (pair a clothed main portrait on one side with a \`zoom layer\` multi-scene preview grid on the other side; each grid cell must specify a distinct setting prop, body part focus, and stage of action).
+     * Print Comic Magazine Cover (Vertical): \`magazine cover, cover page, print media, graphic design, barcode\` (use a full-bleed center main illustration framed around the edges by a top masthead logo, corner issue badge, side feature headlines, and bottom-left barcode box).
+     * Livestream Interface: \`livestream, streaming, user interface, hud, profile picture, avatar icon, heart icon\` (specify \`no bottom video player bar, no playback icons, no text input box\`; avoid \`chat log\` to prevent hallucinated gibberish lines, and use a small number of large rounded comment cards that completely fill their panel).
+     * Social Media / Moments / Feed Post Card (Vertical): \`social media, phone screen, user interface, profile picture, avatar icon, heart icon, white background\` (structure from top to bottom: 1. Top poster avatar + bold name + caption; 2. Center single photo or \`zoom layer, white panel borders\` multi-photo grid; 3. Optional single-row interaction bar; 4. Bottom stacked reply cards with \`no bottom keyboard, no text input box\`).
+
+3. Colon-Guided Spatial Syntax, Trait Isolation & UI Anti-Duplication:
+   - Language Mode Selection: When NO Chinese in-image text is needed, use "方位/分格 + 冒号 + 核心英文Tag + 简明中文描述" clauses. However, whenever Chinese in-image text (\`teXt:\`) IS required, write ALL visual scene/layout descriptions in pure English so Chinese characters appear ONLY inside \`"..."\` quotes and after \`teXt:\`—this prevents the model from accidentally printing descriptive Chinese prose onto the canvas.
+   - State Isolation: Never put panel-specific extremes (e.g., \`small penis\` vs \`huge penis\`, or nude climax tags) into the global header when panels show a progression; keep the global header neutral and lock specific states inside their respective panels. When a clothed main portrait shares the canvas with nude \`zoom layer\` cut-ins, tag the main portrait with \`appropriately dressed\`.
+   - Multi-Character Isolation: Anchor each character to an explicit spatial side (e.g., \`On the left: ... On the right: ...\`) and contrast hair color, hairstyle, eye color, and who performs which action.
+   - Multi-Card & Avatar Binding: Never group multiple comments/cards under one plural description with a trailing list of quotes (which merges lines into one card and leaves empty boxes). Bind each card individually (\`first card with [specific icon/color avatar] on the left, "昵称：内容"; second card with [specific icon/color avatar] on the left, "昵称：内容"\`). Always assign a distinct icon or hair/color trait to each small avatar so the model does not clone the main character face onto every commenter.
+   - Icon Bar Anti-Duplication: For social media interaction bars (comment, repost, like, bookmark/star), omit platform tags like \`twitter\` that auto-generate a second default icon bar, explicitly state \`single row only, no duplicate icon rows\`, use stable icon shapes (\`speech bubble, green arrows, red heart, yellow star\`), and pair icons with text labels or equal pill buttons to fill the row width and prevent icon cloning.
+
+4. Single-Box In-Image Text Embedding Iron Law:
+   - Inside panel/UI descriptions, bind text using a container tag followed by double quotes: \`small text label at top right of this panel, "文字"\`, \`<color> color speech bubble, "文字"\`, or \`rounded comment card, "昵称：文字"\`. Placing two quoted strings on the same container (\`"标题", "正文"\`) stacks them as two lines inside that same container. NEVER write \`text:\` or \`speech text:\` inside panel descriptions.
+   - Match the number of UI containers to the exact number of provided text strings—never create open-ended list containers with more slots than provided text strings, or the model will fill empty space with gibberish characters.
+   - At the VERY END of the entire prompt, append \`teXt: <第一处文字>\` (with capital X), separating multiple text items with blank lines in top-to-bottom reading order. NEVER place any tags or \`char1:\` blocks after \`teXt:\`, or they will be printed onto the image.
+
+OUTPUT CONTRACT
+- Output ONLY the multi-paragraph V5 prompt text (separated by blank lines). Do NOT include bracketed section titles, Markdown code fences, explanations, or a negative prompt section.`;
+
+        // NovelAI V5 Full 专用提示词转换指令 —— 英文分段版（基于官方 Gallery 1/10/11 原图元数据与实测验证）
+        const NAI_V5_EN_PROMPT_SYSTEM_MESSAGE = `You are a specialist at crafting precise NovelAI Diffusion V5 Full prompts in structured English (Booru tags + colon-guided spatial clauses), strictly grounded in official NovelAI V5 documentation and repeatedly verified empirical rules.
+
+VERIFIED V5 FULL GENERATION RULES (ENGLISH STRUCTURED MODE)
+1. Quality Header & Weight Spacing Iron Law:
+   - Begin Paragraph 1 with core quality, rating, subject count, character tags, and layout archetype tags (e.g., \`masterpiece, best quality, very aesthetic, absurdres\`). Do NOT force any specific artist or medium preset unless the user requests one (the user selects artist/style presets separately).
+   - WEIGHT SPACING IRON LAW: Whenever a weighted term ends with a number (e.g., \`2::year 2026 ::,\`, \`2::artist:mi 398 ::,\`), ALWAYS keep a space before the closing \`::\`. Writing \`2026::\` without a space makes NAI parse 2026 as a 2026x weight multiplier and causes pure-noise overexposure.
+
+2. Blank-Line Multi-Paragraph Structure & Verified Layout Archetypes:
+   - Separate the prompt into clear paragraphs with blank lines: [Paragraph 1: Quality, Rating, Character & Global Layout Tags] -> [Paragraphs 2+: Colon-Guided Spatial/Panel Descriptions & Trailing teXt:].
+   - Choose exact verified layout tags in Paragraph 1 based on the scene type:
+     * Game UI + Body Cut-ins: \`multiple views, reference sheet, game cg, jrpg style, user interface, hud, status screen, split screen\` (use \`zoom layer\` and specific anatomical sub-tags like \`areola\`, \`labia\` in the cut-in panels).
+     * Vertical 3-Tier Progression Split: \`simple white background, 3koma, three vertically stacked equal horizontal panels, split screen, horizontal dividing borders, expression progression, size progression\`.
+     * Multi-Panel Color Manga: \`simple white background, four panel manga, 1.5::high complexity ::, 2::detailed ::, 1.1::full color ::, dynamic panel layout, diagonal panel borders\`.
+     * AV / Promotional DVD Cover (Horizontal): \`multiple views, reference sheet, magazine cover, dvd cover, promotional poster, split screen, white panel borders, graphic design\` (pair a clothed main portrait on one side with a \`zoom layer\` multi-scene preview grid on the other side; each grid cell must specify a distinct setting prop, body part focus, and stage of action).
+     * Print Comic Magazine Cover (Vertical): \`magazine cover, cover page, print media, graphic design, barcode\` (use a full-bleed center main illustration framed around the edges by a top masthead logo, corner issue badge, side feature headlines, and bottom-left barcode box).
+     * Livestream Interface: \`livestream, streaming, user interface, hud, profile picture, avatar icon, heart icon\` (specify \`no bottom video player bar, no playback icons, no text input box\`; avoid \`chat log\` to prevent hallucinated gibberish lines, and use a small number of large rounded comment cards that completely fill their panel).
+     * Social Media / Moments / Feed Post Card (Vertical): \`social media, phone screen, user interface, profile picture, avatar icon, heart icon, white background\` (structure from top to bottom: 1. Top poster avatar + bold name + caption; 2. Center single photo or \`zoom layer, white panel borders\` multi-photo grid; 3. Optional single-row interaction bar; 4. Bottom stacked reply cards with \`no bottom keyboard, no text input box\`).
+
+3. Colon-Guided Spatial Syntax, Trait Isolation & UI Anti-Duplication:
+   - Use concise colon-guided spatial clauses rather than verbose sentences (e.g., \`Top horizontal panel: panel 1, ...\`, \`On the right side: ... On the left side: ...\`). Keep all visual scene descriptions in English so that any target text inside \`"..."\` and after \`teXt:\` is cleanly isolated from drawing instructions.
+   - State Isolation: Never put panel-specific extremes (e.g., \`small penis\` vs \`huge penis\`, or nude climax tags) into the global header when panels show a progression; keep the global header neutral and lock specific states inside their respective panels. When a clothed main portrait shares the canvas with nude \`zoom layer\` cut-ins, tag the main portrait with \`appropriately dressed\`.
+   - Multi-Character Isolation: Anchor each character to an explicit spatial side (e.g., \`On the left: ... On the right: ...\`) and contrast hair color, hairstyle, eye color, and action roles.
+   - Multi-Card & Avatar Binding: Never group multiple comments/cards under one plural description with a trailing list of quotes (which merges lines into one card and leaves empty boxes). Bind each card individually (\`first card with [specific icon/color avatar] on the left, "Name: text"; second card with [specific icon/color avatar] on the left, "Name: text"\`). Always assign a distinct icon or hair/color trait to each small avatar so the model does not clone the main character face onto every commenter.
+   - Icon Bar Anti-Duplication: For social media interaction bars (comment, repost, like, bookmark/star), omit platform tags like \`twitter\` that auto-generate a second default icon bar, explicitly state \`single row only, no duplicate icon rows\`, use stable icon shapes (\`speech bubble, green arrows, red heart, yellow star\`), and pair icons with text labels or equal pill buttons to fill the row width and prevent icon cloning.
+
+4. Single-Box In-Image Text Embedding Iron Law:
+   - Inside panel/UI descriptions, bind text using a container tag followed by double quotes: \`small text label at top right of this panel, "text"\`, \`<color> color speech bubble, "text"\`, or \`rounded comment card, "Name: text"\`. Placing two quoted strings on the same container (\`"Header", "Body"\`) stacks them as two lines inside that same container. NEVER write \`text:\` or \`speech text:\` inside panel descriptions.
+   - Match the number of UI containers to the exact number of provided text strings—never create open-ended list containers with more slots than provided text strings, or the model will fill empty space with gibberish characters.
+   - At the VERY END of the entire prompt, append \`teXt: <first text>\` (with capital X), separating multiple text items with blank lines in top-to-bottom reading order. NEVER place any tags or \`char1:\` blocks after \`teXt:\`, or they will be printed onto the image.
+
+OUTPUT CONTRACT
+- Output ONLY the multi-paragraph English V5 prompt text (separated by blank lines). Do NOT include bracketed section titles, Markdown code fences, explanations, or a negative prompt section.`;
 
         const NAI_BUILTIN_ARTIST_PRESETS = {
             'fresh': {
@@ -8772,7 +8843,7 @@ For multiple characters, keep each character's appearance and actions unambiguou
             }
         };
 
-        const NAI_DEFAULT_NEGATIVE = '{{{{bad anatomy}}}},{bad feet},bad hands,{{{bad proportions}}},{blurry},cloned face,cropped,{{{deformed}}},{{{disfigured}}},error,{{{extra arms}}},{extra digit},{{{extra legs}}},extra limbs,{{extra limbs}},{fewer digits},{{{fused fingers}}},gross proportions,jpeg artifacts,{{{{long neck}}}},low quality,{malformed limbs},{{missing arms}},{missing fingers},{{missing legs}},mutated hands,{{{mutation}}},normal quality,poorly drawn face,poorly drawn hands,signature,text,{{too many fingers}},{{{ugly}}},username,watermark,worst quality';
+        const NAI_DEFAULT_NEGATIVE = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, too many watermarks, negative space, blank page, sketch, bad anatomy, bad hands, bad fingers, bad arms, bad legs, fewer digits, mutation, mosaic, censorship, censored, censor, bar censor, blurry, letterboxing, black bars, detailed nose, realistic nose, cut character, distorted, disfigured, asymmetrical, bad proportions, amateur, monochrome, greyscale, 2koma, 3koma, 4koma, comic, error, watermark, username, signature, media player, playback controls, video progress bar, gibberish text, unreadable small text, chat input box, phone keyboard';
 
         const personalityPresets = {
             'default': {
@@ -8804,32 +8875,47 @@ For multiple characters, keep each character's appearance and actions unambiguou
             textarea.value = jailbreakHeader + personalityPresets[key].content + functionalRules;
         }
 
-        let currentEditingNaiVer = 'v5';
-        const getNaiPromptRule = (ver) => ver === 'v5'
-            ? (settings.naiPromptV5 || NAI_V5_PROMPT_SYSTEM_MESSAGE)
-            : (settings.naiPromptV45 || NAI_V45_PROMPT_SYSTEM_MESSAGE);
+        let currentEditingNaiVer = 'v5_zh';
+        const NAI_RULE_LABELS = {
+            'v5_zh': 'NAI V5 Full (中文分段)',
+            'v5_en': 'NAI V5 Full (英文分段)',
+            'v45': 'NAI V4.5 (纯英文Tag)'
+        };
+        const getDefaultNaiPromptRule = (ver) => {
+            if (ver === 'v5_en') return NAI_V5_EN_PROMPT_SYSTEM_MESSAGE;
+            if (ver === 'v45') return NAI_V45_PROMPT_SYSTEM_MESSAGE;
+            return NAI_V5_ZH_PROMPT_SYSTEM_MESSAGE;
+        };
+        const getNaiPromptRule = (ver) => {
+            if (ver === 'v5_en') return settings.naiPromptV5En || NAI_V5_EN_PROMPT_SYSTEM_MESSAGE;
+            if (ver === 'v45') return settings.naiPromptV45 || NAI_V45_PROMPT_SYSTEM_MESSAGE;
+            return settings.naiPromptV5Zh || NAI_V5_ZH_PROMPT_SYSTEM_MESSAGE;
+        };
 
         function switchNaiPromptTab(ver, btn) {
+            if (ver === 'v5') ver = 'v5_zh';
             currentEditingNaiVer = ver;
             document.querySelectorAll('#naiPromptChips .personality-chip').forEach(c => {
                 c.classList.toggle('active', c.dataset.ver === ver);
             });
             const label = document.getElementById('naiPromptRuleLabel');
-            if (label) label.textContent = `当前编辑：${ver === 'v5' ? 'NAI V5 Full' : 'NAI V4.5'} 转换规则`;
+            if (label) label.textContent = `当前编辑：${NAI_RULE_LABELS[ver] || ver} 转换规则`;
             const editor = document.getElementById('naiSystemPromptEditor');
             if (editor) editor.value = getNaiPromptRule(ver);
         }
 
         function onNaiSystemPromptEdit() {
             const val = document.getElementById('naiSystemPromptEditor')?.value || '';
-            if (currentEditingNaiVer === 'v5') settings.naiPromptV5 = val;
-            else settings.naiPromptV45 = val;
+            if (currentEditingNaiVer === 'v5_en') settings.naiPromptV5En = val;
+            else if (currentEditingNaiVer === 'v45') settings.naiPromptV45 = val;
+            else settings.naiPromptV5Zh = val;
         }
 
         function resetCurrentNaiPromptRule() {
-            const defVal = currentEditingNaiVer === 'v5' ? NAI_V5_PROMPT_SYSTEM_MESSAGE : NAI_V45_PROMPT_SYSTEM_MESSAGE;
-            if (currentEditingNaiVer === 'v5') settings.naiPromptV5 = defVal;
-            else settings.naiPromptV45 = defVal;
+            const defVal = getDefaultNaiPromptRule(currentEditingNaiVer);
+            if (currentEditingNaiVer === 'v5_en') delete settings.naiPromptV5En;
+            else if (currentEditingNaiVer === 'v45') delete settings.naiPromptV45;
+            else delete settings.naiPromptV5Zh;
             const editor = document.getElementById('naiSystemPromptEditor');
             if (editor) editor.value = defVal;
             showToast('已恢复默认生图提示词规则', 'success');
@@ -8837,8 +8923,8 @@ For multiple characters, keep each character's appearance and actions unambiguou
 
         function applyNaiPromptToChat() {
             const rule = document.getElementById('naiSystemPromptEditor')?.value || getNaiPromptRule(currentEditingNaiVer);
-            const verName = currentEditingNaiVer === 'v5' ? 'NovelAI V5 Full' : 'NovelAI V4.5';
-            const chatSuffix = `\n\nWhen the user chats in Chinese, asks to modify details in multi-turn dialogue, or uploads an image to reverse-engineer tags, always output the complete updated English ${verName} prompt wrapped in a \`\`\`text codeblock so the user can one-click copy or send it to the NAI Workbench, followed by a brief 1-sentence Chinese summary of what changed.`;
+            const verName = NAI_RULE_LABELS[currentEditingNaiVer] || 'NovelAI V5 Full';
+            const chatSuffix = `\n\nWhen the user chats in Chinese, asks to modify details in multi-turn dialogue, or uploads an image to reverse-engineer tags, always output the complete updated ${verName} prompt wrapped in a \`\`\`text codeblock so the user can one-click copy or send it to the NAI Workbench, followed by a brief 1-sentence Chinese summary of what changed.`;
             const sysTextarea = document.getElementById('systemPrompt');
             if (sysTextarea) {
                 sysTextarea.value = jailbreakHeader + rule + chatSuffix;
@@ -10160,7 +10246,8 @@ For multiple characters, keep each character's appearance and actions unambiguou
         function loadNaiStateToUI() {
             populateNaiArtistSelect();
             const verEl = document.getElementById('naiVersionSelect');
-            if (verEl) verEl.value = naiState.version || 'v5';
+            if (naiState.version === 'v5') naiState.version = 'v5_zh';
+            if (verEl) verEl.value = naiState.version || 'v5_zh';
             document.getElementById('naiPromptInput').value = naiState.prompt || '';
             document.getElementById('naiArtistInput').value = naiState.artistText ?? NAI_BUILTIN_ARTIST_PRESETS['2.5d'].value;
             document.getElementById('naiWidthInput').value = naiState.width || 832;
@@ -10214,6 +10301,68 @@ For multiple characters, keep each character's appearance and actions unambiguou
             if (show) setTimeout(() => document.getElementById('naiCnInput')?.focus(), 80);
         }
 
+        async function fetchFreeGoogleTranslate(text) {
+            const q = encodeURIComponent(text);
+            const endpoints = [
+                {
+                    url: `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=en&q=${q}`,
+                    parse: (data) => Array.isArray(data) ? (typeof data[0] === 'string' ? data[0] : (Array.isArray(data[0]) ? data[0][0] : '')) : ''
+                },
+                {
+                    url: `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${q}`,
+                    parse: (data) => Array.isArray(data?.[0]) ? data[0].map(item => item?.[0] || '').join('') : ''
+                }
+            ];
+            let lastErr = null;
+            for (const ep of endpoints) {
+                try {
+                    const res = await fetch(ep.url);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+                    const translated = (ep.parse(data) || '').trim();
+                    if (translated) return translated;
+                } catch (err) {
+                    lastErr = err;
+                }
+            }
+            throw lastErr || new Error('谷歌翻译连接失败，请确认网络或代理可用');
+        }
+
+        async function googleTranslateNaiPrompt(source = 'cnBox') {
+            const isFromBox = source === 'cnBox';
+            const inputEl = document.getElementById(isFromBox ? 'naiCnInput' : 'naiPromptInput');
+            const btn = document.getElementById(isFromBox ? 'naiGoogleTranslateBtn' : 'naiDirectGoogleBtn');
+            const rawText = (inputEl?.value || '').trim();
+            if (!rawText) return showToast(isFromBox ? '请先输入要翻译的中文描述' : '提示词输入框为空', 'warning');
+            const oldText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '翻译中...';
+            try {
+                const teXtMatch = rawText.match(/(,\s*teXt:[\s\S]*)$/i);
+                const mainBody = teXtMatch ? rawText.slice(0, teXtMatch.index) : rawText;
+                const preservedQuotes = [];
+                const maskedBody = mainBody.replace(/"([^"\r\n]*[\u4e00-\u9fa5][^"\r\n]*)"/g, (m) => {
+                    preservedQuotes.push(m);
+                    return `"__ZH_QUOTE_${preservedQuotes.length - 1}__"`;
+                });
+                let translated = await fetchFreeGoogleTranslate(maskedBody);
+                preservedQuotes.forEach((orig, idx) => {
+                    translated = translated.replace(new RegExp(`"\\s*__ZH_QUOTE_${idx}__\\s*"`, 'i'), orig);
+                });
+                if (teXtMatch) translated = translated.trimEnd() + teXtMatch[1];
+                document.getElementById('naiPromptInput').value = translated.trim();
+                saveNaiState();
+                if (isFromBox) toggleNaiConvertBox(false);
+                showToast('已通过谷歌免费直译为英文自然语言', 'success');
+            } catch (e) {
+                console.error('Google translate failed:', e);
+                showToast('谷歌翻译失败: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = oldText;
+            }
+        }
+
         async function convertChineseToNaiPrompt() {
             const cnInput = document.getElementById('naiCnInput');
             const text = cnInput.value.trim();
@@ -10226,9 +10375,9 @@ For multiple characters, keep each character's appearance and actions unambiguou
             const oldText = btn.textContent;
             btn.disabled = true;
             btn.textContent = '转换中...';
-            const targetVersion = document.getElementById('naiVersionSelect')?.value || naiState.version || 'v5';
+            const targetVersion = document.getElementById('naiVersionSelect')?.value || naiState.version || 'v5_zh';
             const systemRule = getNaiPromptRule(targetVersion);
-            const verLabel = targetVersion === 'v5' ? 'V5 Full' : 'V4.5';
+            const verLabel = NAI_RULE_LABELS[targetVersion] || 'V5 Full';
             try {
                 const response = await fetch(`${getApiBase()}/v1/chat/completions`, {
                     method: 'POST',
@@ -10255,7 +10404,8 @@ For multiple characters, keep each character's appearance and actions unambiguou
                     .replace(/\s*```$/, '')
                     .replace(/^prompt\s*:\s*/i, '')
                     .replace(/^["']|["']$/g, '')
-                    .replace(/\s+/g, ' ')
+                    .replace(/[ \t]+/g, ' ')
+                    .replace(/\n{3,}/g, '\n\n')
                     .trim();
                 if (!result) throw new Error('模型未返回有效提示词');
                 document.getElementById('naiPromptInput').value = result;
@@ -11712,6 +11862,12 @@ For multiple characters, keep each character's appearance and actions unambiguou
         // 构建支持多模态的消息（包含图片的base64和文本文件内容）
         function buildMultimodalMessages(conversation) {
             let systemPrompt = settings.systemPrompt;
+            const activeNaiVer = (typeof naiState !== 'undefined' && naiState.version) ? naiState.version : (currentEditingNaiVer || 'v5_zh');
+            const activeNaiRule = getNaiPromptRule(activeNaiVer);
+            if (activeNaiRule && !systemPrompt.includes('VERIFIED V5 FULL GENERATION RULES') && !systemPrompt.includes('TAG PRIORITY AND ORDER')) {
+                const activeVerLabel = NAI_RULE_LABELS[activeNaiVer] || 'NovelAI V5 Full';
+                systemPrompt += `\n\n[NovelAI 生图提示词编写规范（当前激活：${activeVerLabel}）]\n当用户在对话中要求编写、修改、优化生图提示词（Prompt/Tag）或反推图片提示词时，你必须严格遵循以下经过实测验证的生图规则，并将最终提示词放在 \`\`\`text 代码块中输出，方便用户一键复制或发送到生图工作台：\n${activeNaiRule}`;
+            }
 
             // 添加当前北京时间
             try {
@@ -15198,6 +15354,17 @@ onclick="switchConversation('${conv.id}')">
             const tkInput = document.getElementById('tavilyKeyInput');
             if (tkInput) tkInput.value = settings.tavilyKey || '';
             toggleSearchProviderInputs();
+            if (settings.naiPromptV5 && settings.naiPromptV5.includes('Return ONLY the final V5 prompt string (single paragraph/line')) {
+                delete settings.naiPromptV5;
+            }
+            if (settings.naiPromptV5Zh && (settings.naiPromptV5Zh.includes('watercolor (medium), pale color') || !settings.naiPromptV5Zh.includes('Icon Bar Anti-Duplication'))) {
+                delete settings.naiPromptV5Zh;
+                localStorage.setItem('settings', JSON.stringify(settings));
+            }
+            if (settings.naiPromptV5En && (settings.naiPromptV5En.includes('watercolor (medium), pale color') || !settings.naiPromptV5En.includes('Icon Bar Anti-Duplication'))) {
+                delete settings.naiPromptV5En;
+                localStorage.setItem('settings', JSON.stringify(settings));
+            }
             switchNaiPromptTab(currentEditingNaiVer || 'v5');
         }
 
